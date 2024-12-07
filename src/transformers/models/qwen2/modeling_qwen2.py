@@ -286,13 +286,13 @@ class Qwen2Attention(nn.Module):
         cache_position: Optional[torch.LongTensor] = None,
         position_embeddings: Optional[Tuple[torch.Tensor, torch.Tensor]] = None,  # will become mandatory in v4.46
     ) -> Tuple[torch.Tensor, Optional[torch.Tensor], Optional[Tuple[torch.Tensor]]]:
-        bsz, q_len, _ = hidden_states.size()
+        bsz, q_len, _ = hidden_states.size() # 获取batch_size 和 q_len。
 
-        query_states = self.q_proj(hidden_states)
+        query_states = self.q_proj(hidden_states) # 生成q、k、v。
         key_states = self.k_proj(hidden_states)
-        value_states = self.v_proj(hidden_states)
+        value_states = self.v_proj(hidden_states) # bsz x q_len x hidden
 
-        query_states = query_states.view(bsz, q_len, self.num_heads, self.head_dim).transpose(1, 2)
+        query_states = query_states.view(bsz, q_len, self.num_heads, self.head_dim).transpose(1, 2) # bsz x  num_heads x q_len x head_dim。
         key_states = key_states.view(bsz, q_len, self.num_key_value_heads, self.head_dim).transpose(1, 2)
         value_states = value_states.view(bsz, q_len, self.num_key_value_heads, self.head_dim).transpose(1, 2)
 
@@ -303,28 +303,29 @@ class Qwen2Attention(nn.Module):
                 "`position_embeddings` (Tuple of tensors, containing cos and sin). In v4.46 `position_ids` will be "
                 "removed and `position_embeddings` will be mandatory."
             )
-            cos, sin = self.rotary_emb(value_states, position_ids)
+            cos, sin = self.rotary_emb(value_states, position_ids) # bsz x q_len x head_dim。
         else:
             cos, sin = position_embeddings
-        query_states, key_states = apply_rotary_pos_emb(query_states, key_states, cos, sin)
+        query_states, key_states = apply_rotary_pos_emb(query_states, key_states, cos, sin) # 在q和k上面应用旋转位置编码。
 
-        if past_key_value is not None:
+        if past_key_value is not None:  # 更新注意力。
             cache_kwargs = {"sin": sin, "cos": cos, "cache_position": cache_position}  # Specific to RoPE models
-            key_states, value_states = past_key_value.update(key_states, value_states, self.layer_idx, cache_kwargs)
+            key_states, value_states = past_key_value.update(key_states, value_states, self.layer_idx, cache_kwargs) # bsz x head x len x head_dim。
+            # 此处会对注意力进行更新。 将形状为hsz、head、1（len）、head_dim 中的len补全长度。
 
         # repeat k/v heads if n_kv_heads < n_heads
-        key_states = repeat_kv(key_states, self.num_key_value_groups)
+        key_states = repeat_kv(key_states, self.num_key_value_groups)  # bsz x head x num_heads x head_dim。
         value_states = repeat_kv(value_states, self.num_key_value_groups)
 
-        attn_weights = torch.matmul(query_states, key_states.transpose(2, 3)) / math.sqrt(self.head_dim)
+        attn_weights = torch.matmul(query_states, key_states.transpose(2, 3)) / math.sqrt(self.head_dim) # q和k相乘，除以根号d。 attn_weights：bs，len，head，head
         if attention_mask is not None:  # no matter the length, we just slice it
             causal_mask = attention_mask[:, :, :, : key_states.shape[-2]]
             attn_weights = attn_weights + causal_mask
 
         # upcast attention to fp32
-        attn_weights = nn.functional.softmax(attn_weights, dim=-1, dtype=torch.float32).to(query_states.dtype)
-        attn_weights = nn.functional.dropout(attn_weights, p=self.attention_dropout, training=self.training)
-        attn_output = torch.matmul(attn_weights, value_states)
+        attn_weights = nn.functional.softmax(attn_weights, dim=-1, dtype=torch.float32).to(query_states.dtype) # softmax操作。
+        attn_weights = nn.functional.dropout(attn_weights, p=self.attention_dropout, training=self.training) # 训练的时候有dropout。
+        attn_output = torch.matmul(attn_weights, value_states) # 权重和v相乘。
 
         if attn_output.size() != (bsz, self.num_heads, q_len, self.head_dim):
             raise ValueError(
@@ -332,15 +333,18 @@ class Qwen2Attention(nn.Module):
                 f" {attn_output.size()}"
             )
 
-        attn_output = attn_output.transpose(1, 2).contiguous()
-        attn_output = attn_output.reshape(bsz, q_len, self.hidden_size)
+        attn_output = attn_output.transpose(1, 2).contiguous() # bs，len，head， head_dim
+        attn_output = attn_output.reshape(bsz, q_len, self.hidden_size) # 转换形状。 # bs, len, hidden
 
-        attn_output = self.o_proj(attn_output)
+        attn_output = self.o_proj(attn_output) # 多头注意力。
 
         if not output_attentions:
             attn_weights = None
 
         return attn_output, attn_weights, past_key_value
+        # attn_output  bs, len, hidden
+        # attn_weights bs, len, head, head
+        # past_key_value   num_hidden_layers[key_cache, value_cache]  每层保存一对k、v值。  k、v 的形状都是： bs, head, len, head_dim
 
 
 class Qwen2FlashAttention2(Qwen2Attention):
@@ -481,7 +485,7 @@ class Qwen2SdpaAttention(Qwen2Attention):
         cache_position: Optional[torch.LongTensor] = None,
         position_embeddings: Optional[Tuple[torch.Tensor, torch.Tensor]] = None,  # will become mandatory in v4.46
     ) -> Tuple[torch.Tensor, Optional[torch.Tensor], Optional[Tuple[torch.Tensor]]]:
-        if output_attentions:
+        if output_attentions == False:
             # TODO: Improve this warning with e.g. `model.config.attn_implementation = "manual"` once this is implemented.
             logger.warning_once(
                 "Qwen2Model is using Qwen2SdpaAttention, but `torch.nn.functional.scaled_dot_product_attention` does not support `output_attentions=True`. Falling back to the manual attention implementation, "

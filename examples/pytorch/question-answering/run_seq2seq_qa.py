@@ -275,7 +275,7 @@ def main():
     # or by passing the --help flag to this script.
     # We now keep distinct sets of args, for a cleaner separation of concerns.
 
-    parser = HfArgumentParser((ModelArguments, DataTrainingArguments, Seq2SeqTrainingArguments))
+    parser = HfArgumentParser((ModelArguments, DataTrainingArguments, Seq2SeqTrainingArguments)) # 设置参数类型并解析。
     if len(sys.argv) == 2 and sys.argv[1].endswith(".json"):
         # If we pass only one argument to the script and it's the path to a json file,
         # let's parse it to get our arguments.
@@ -287,7 +287,7 @@ def main():
     # information sent is the one passed as arguments along with your Python/PyTorch versions.
     send_example_telemetry("run_seq2seq_qa", model_args, data_args)
 
-    # Setup logging
+    # Setup logging 设置日志格式。
     logging.basicConfig(
         format="%(asctime)s - %(levelname)s - %(name)s - %(message)s",
         datefmt="%m/%d/%Y %H:%M:%S",
@@ -339,7 +339,7 @@ def main():
     #
     # In distributed training, the load_dataset function guarantee that only one local process can concurrently
     # download the dataset.
-    if data_args.dataset_name is not None:
+    if data_args.dataset_name is not None:  # 加载数据。
         # Downloading and loading a dataset from the hub.
         raw_datasets = load_dataset(
             data_args.dataset_name,
@@ -374,7 +374,7 @@ def main():
     # Distributed training:
     # The .from_pretrained methods guarantee that only one local process can concurrently
     # download model & vocab.
-    config = AutoConfig.from_pretrained(
+    config = AutoConfig.from_pretrained(  # 初始化配置。
         model_args.config_name if model_args.config_name else model_args.model_name_or_path,
         cache_dir=model_args.cache_dir,
         revision=model_args.model_revision,
@@ -539,7 +539,7 @@ def main():
         model_inputs["labels"] = labels_out
         return model_inputs
 
-    if training_args.do_train:
+    if training_args.do_train: # 准备训练数据。
         if "train" not in raw_datasets:
             raise ValueError("--do_train requires a train dataset")
         train_dataset = raw_datasets["train"]
@@ -562,7 +562,7 @@ def main():
             max_train_samples = min(len(train_dataset), data_args.max_train_samples)
             train_dataset = train_dataset.select(range(max_train_samples))
 
-    if training_args.do_eval:
+    if training_args.do_eval: # 准备评估数据。
         if "validation" not in raw_datasets:
             raise ValueError("--do_eval requires a validation dataset")
         eval_examples = raw_datasets["validation"]
@@ -585,7 +585,7 @@ def main():
             max_eval_samples = min(len(eval_dataset), data_args.max_eval_samples)
             eval_dataset = eval_dataset.select(range(max_eval_samples))
 
-    if training_args.do_predict:
+    if training_args.do_predict: # 准备预测数据
         if "test" not in raw_datasets:
             raise ValueError("--do_predict requires a test dataset")
         predict_examples = raw_datasets["test"]
@@ -656,7 +656,7 @@ def main():
         references = [{"id": ex["id"], "answers": ex[answer_column]} for ex in examples]
         return EvalPrediction(predictions=formatted_predictions, label_ids=references)
 
-    # Initialize our Trainer
+    # Initialize our Trainer  # 初始化训练。
     trainer = QuestionAnsweringSeq2SeqTrainer(
         model=model,
         args=training_args,
@@ -669,7 +669,7 @@ def main():
         post_process_function=post_processing_function,
     )
 
-    # Training
+    # Training  训练。
     if training_args.do_train:
         checkpoint = None
         if training_args.resume_from_checkpoint is not None:
@@ -689,7 +689,7 @@ def main():
         trainer.save_metrics("train", metrics)
         trainer.save_state()
 
-    # Evaluation
+    # Evaluation 评估
     results = {}
     max_length = (
         training_args.generation_max_length
@@ -707,7 +707,7 @@ def main():
         trainer.log_metrics("eval", metrics)
         trainer.save_metrics("eval", metrics)
 
-    # Prediction
+    # Prediction 预测
     if training_args.do_predict:
         logger.info("*** Predict ***")
         results = trainer.predict(predict_dataset, predict_examples)
@@ -721,7 +721,7 @@ def main():
         trainer.log_metrics("predict", metrics)
         trainer.save_metrics("predict", metrics)
 
-    if training_args.push_to_hub:
+    if training_args.push_to_hub: # 上传到hub
         kwargs = {"finetuned_from": model_args.model_name_or_path, "tasks": "question-answering"}
         if data_args.dataset_name is not None:
             kwargs["dataset_tags"] = data_args.dataset_name

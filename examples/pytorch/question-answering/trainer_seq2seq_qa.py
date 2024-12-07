@@ -31,7 +31,7 @@ if is_torch_xla_available():
     import torch_xla.debug.metrics as met
 
 
-class QuestionAnsweringSeq2SeqTrainer(Seq2SeqTrainer):
+class QuestionAnsweringSeq2SeqTrainer(Seq2SeqTrainer): # 集成训练方法。
     def __init__(self, *args, eval_examples=None, post_process_function=None, **kwargs):
         super().__init__(*args, **kwargs)
         self.eval_examples = eval_examples
